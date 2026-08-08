@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harmonic — три скорости памяти и договор вокруг них</title>
+<meta name="description" content="Архитектурный атлас harmonic-rs: Rust-порт иерархической state-space модели на candle и пять requirements-first спецификаций вокруг неё. ANSI-схемы C4 L2, карта полномочий, честные метрики объёма и открытые долги.">
+<meta property="og:title" content="Harmonic — три скорости памяти и договор вокруг них">
+<meta property="og:description" content="132 725 строк Rust, из которых на саму модель приходится 2 %. Шесть ANSI-схем: карта пяти спецификаций и C4 L2 каждой из них.">
+<meta property="og:type" content="article">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%230b7285'/><path d='M1 8 Q3 3 5 8 T9 8 T13 8 T17 8' fill='none' stroke='%23ff8a3d' stroke-width='1.1'/><path d='M1 11 Q5 5.5 9 11 T17 11' fill='none' stroke='%23fff' stroke-width='1.1' opacity='.85'/></svg>">
+</head>
+<body>
+<style>
+  :root {
+    --paper:      #f1f5f5;
+    --surface:    #fbfdfd;
+    --plate:      #f7fafa;
+    --ink:        #0f1c1e;
+    --ink-2:      #43585b;
+    --ink-3:      #6b8083;
+    --line:       #d2dede;
+    --rule:       #b9cacb;
+    --accent:     #0b7285;
+    --accent-2:   #c2410c;
+    --ok:         #2c6e43;
+    --warn:       #96650f;
+    --crit:       #a82525;
+    --console-bg: #0b1416;
+    --console-ink:#cde3e3;
+    --console-dim:#6f8a8c;
+    --nav-bg:     rgba(241, 245, 245, .88);
+
+    --f-display: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --f-body:    ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --f-ui:      ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --measure: 66ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0a1113; --surface: #111a1c; --plate: #dfe9e9;
+      --ink: #e4eeee; --ink-2: #9db2b4; --ink-3: #78908f;
+      --line: #223234; --rule: #2e4245;
+      --accent: #35d3e0; --accent-2: #ff8a3d;
+      --ok: #63c483; --warn: #dda65c; --crit: #ef7070;
+      --console-bg: #050b0c; --nav-bg: rgba(10, 17, 19, .88);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0a1113; --surface: #111a1c; --plate: #dfe9e9;
+    --ink: #e4eeee; --ink-2: #9db2b4; --ink-3: #78908f;
+    --line: #223234; --rule: #2e4245;
+    --accent: #35d3e0; --accent-2: #ff8a3d;
+    --ok: #63c483; --warn: #dda65c; --crit: #ef7070;
+    --console-bg: #050b0c; --nav-bg: rgba(10, 17, 19, .88);
+  }
+  :root[data-theme="light"] {
+    --paper: #f1f5f5; --surface: #fbfdfd; --plate: #f7fafa;
+    --ink: #0f1c1e; --ink-2: #43585b; --ink-3: #6b8083;
+    --line: #d2dede; --rule: #b9cacb;
+    --accent: #0b7285; --accent-2: #c2410c;
+    --ok: #2c6e43; --warn: #96650f; --crit: #a82525;
+    --console-bg: #0b1416; --nav-bg: rgba(241, 245, 245, .88);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 1rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* ── навигация ─────────────────────────────────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--nav-bg);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 92rem; margin: 0 auto;
+    padding: .55rem clamp(1.1rem, 4vw, 3rem);
+    display: flex; align-items: center; gap: 1rem 1.4rem; flex-wrap: wrap;
+    font-family: var(--f-ui); font-size: .8rem;
+  }
+  .brand {
+    font-family: var(--f-display); font-weight: 600; letter-spacing: -.01em;
+    color: var(--ink); text-decoration: none; margin-right: auto;
+  }
+  .brand b { color: var(--accent); }
+  .topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .topbar nav a { color: var(--ink-2); text-decoration: none; }
+  .topbar nav a:hover { color: var(--accent); }
+  .topbar nav a:focus-visible, .brand:focus-visible, a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
+  }
+  .topbar nav a.up { color: var(--ink-3); }
+
+  .wrap {
+    max-width: 92rem; margin: 0 auto;
+    padding: clamp(1.8rem, 4vw, 3.5rem) clamp(1.1rem, 4vw, 3rem) 5rem;
+    display: flex; flex-direction: column; gap: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  /* ── шапка ─────────────────────────────────────────── */
+  .masthead { display: flex; flex-direction: column; gap: 1.1rem; }
+  .eyebrow {
+    font-family: var(--f-display); font-size: .74rem; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3);
+    display: flex; flex-wrap: wrap; gap: .35rem .9rem;
+  }
+  .eyebrow b { color: var(--accent); font-weight: 600; }
+  h1 {
+    font-family: var(--f-display);
+    font-size: clamp(1.8rem, 5.2vw, 2.6rem);
+    line-height: 1.08; letter-spacing: -.02em; font-weight: 600;
+    text-wrap: balance; margin: 0;
+  }
+  h1 span { color: var(--accent); }
+  .standfirst { max-width: var(--measure); font-size: 1.15rem; color: var(--ink-2); text-wrap: pretty; }
+  .figures {
+    display: flex; flex-wrap: wrap; gap: .4rem 2.2rem;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: .9rem 0; margin: 0;
+    font-family: var(--f-ui); font-variant-numeric: tabular-nums;
+  }
+  .figures div { display: flex; align-items: baseline; gap: .45rem; }
+  .figures dt { font-size: 1.35rem; font-family: var(--f-display); color: var(--ink); }
+  .figures dd { margin: 0; font-size: .82rem; color: var(--ink-3); }
+
+  /* ── типографика ───────────────────────────────────── */
+  section { display: flex; flex-direction: column; gap: 1.1rem; scroll-margin-top: 4.5rem; }
+  h2 {
+    font-family: var(--f-display); font-size: 1.9rem; line-height: 1.15;
+    letter-spacing: -.015em; font-weight: 600; margin: 0; text-wrap: balance;
+  }
+  h3 { font-family: var(--f-display); font-size: 1.15rem; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+  p { margin: 0; max-width: var(--measure); text-wrap: pretty; }
+  code {
+    font-family: var(--f-display); font-size: .87em;
+    background: color-mix(in oklab, var(--accent) 12%, transparent);
+    padding: .08em .32em; border-radius: 2px;
+  }
+  a { color: var(--accent); text-underline-offset: .18em; }
+
+  /* ── плашки с диаграммами ──────────────────────────── */
+  figure { margin: 0; display: flex; flex-direction: column; gap: .6rem; }
+  figcaption { font-family: var(--f-ui); font-size: .8rem; color: var(--ink-3); max-width: var(--measure); }
+  figcaption b { color: var(--ink-2); font-weight: 600; }
+  figcaption code { background: color-mix(in oklab, var(--accent) 10%, transparent); }
+  .capline { display: flex; align-items: baseline; gap: .8rem; max-width: none; flex-wrap: wrap; }
+  .capline figcaption { flex: 1 1 24rem; }
+  .copy {
+    font-family: var(--f-ui); font-size: .76rem; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); background: none; border: 0; border-bottom: 1px solid currentColor;
+    padding: 0 0 1px; cursor: pointer; flex: none;
+  }
+  .copy:hover { color: var(--ink); }
+
+  /* ── консоль: сюда идут ANSI-схемы ─────────────────── */
+  .console {
+    background: var(--console-bg); color: var(--console-ink);
+    font-family: var(--f-display); font-size: .82rem; line-height: 1.6;
+    padding: 1.1rem 1.2rem; overflow-x: auto; border-left: 3px solid var(--accent-2);
+    margin: 0; white-space: pre; tab-size: 4;
+  }
+  .console .dim { color: var(--console-dim); }
+  .console .hi  { color: #7fd8a0; }
+  @media (max-width: 46rem) { .console { font-size: .66rem; } }
+
+  /* ── таблицы ───────────────────────────────────────── */
+  .tablewrap { overflow-x: auto; }
+  table {
+    border-collapse: collapse; width: 100%; font-family: var(--f-ui);
+    font-size: .88rem; font-variant-numeric: tabular-nums;
+  }
+  caption {
+    text-align: left; font-family: var(--f-ui); font-size: .73rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); padding-bottom: .5rem;
+  }
+  th, td { text-align: left; padding: .5rem .8rem .5rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); border-bottom-color: var(--rule); white-space: nowrap; }
+  td.no  { color: var(--crit); }
+  td.yes { color: var(--ok); }
+  td.part { color: var(--warn); }
+  td.dim { color: var(--ink-3); }
+  td.n { text-align: right; white-space: nowrap; }
+  td .mono, th .mono { font-family: var(--f-display); }
+  .spec td:first-child { font-family: var(--f-display); color: var(--accent); white-space: nowrap; }
+
+  /* ── прочее ────────────────────────────────────────── */
+  .callout { border-left: 3px solid var(--accent); padding: .2rem 0 .2rem 1rem; color: var(--ink-2); max-width: var(--measure); }
+  .callout b { color: var(--ink); }
+  .split { display: grid; gap: 1.2rem 2.5rem; grid-template-columns: 1fr; }
+  @media (min-width: 56rem) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+  .stack { display: flex; flex-direction: column; gap: 1rem; }
+  ul.plain { margin: 0; padding-left: 1.1rem; max-width: var(--measure); }
+  ul.plain li { margin-bottom: .4rem; }
+  ul.plain li::marker { color: var(--accent); }
+  .figset { display: flex; flex-direction: column; gap: 2.2rem; }
+  .tau { display: grid; gap: .8rem; grid-template-columns: 1fr; }
+  @media (min-width: 52rem) { .tau { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .tau div { border: 1px solid var(--line); background: var(--surface); padding: .8rem 1rem; }
+  .tau dt { font-family: var(--f-display); font-size: .95rem; color: var(--accent-2); font-weight: 600; }
+  .tau dd { margin: .3rem 0 0; font-size: .92rem; color: var(--ink-2); }
+  .formula {
+    font-family: var(--f-display); font-size: .95rem; color: var(--accent);
+    border: 1px solid var(--line); background: var(--surface);
+    padding: .6rem .9rem; align-self: start;
+  }
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 1.2rem;
+    font-family: var(--f-ui); font-size: .85rem; color: var(--ink-3);
+    display: flex; flex-direction: column; gap: .5rem;
+  }
+  footer code { background: none; color: var(--ink-2); }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top">гармоника<b>/</b>harmonic-rs</a>
+    <nav>
+      <a href="#core">Ядро</a>
+      <a href="#volume">Объём</a>
+      <a href="#map">Карта</a>
+      <a href="#specs">Спецификации</a>
+      <a href="#authority">Полномочия</a>
+      <a href="#debts">Долги</a>
+      <a class="up" href="/">← Атласы</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap" id="top">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span>harmonic-rs</span>
+      <b>8cf462e</b>
+      <span>8 августа 2026</span>
+      <span>Rust · candle</span>
+      <span>∿ иерархическая SSM</span>
+    </div>
+    <h1>Harmonic — три скорости памяти и <span>договор вокруг них</span></h1>
+    <p class="standfirst">Независимый Rust-порт иерархической state-space модели: три рекуррентных уровня забывают с разной скоростью, и наверх между ними течёт ошибка предсказания, а не сырое состояние. Вокруг этого ядра выросли пять requirements-first спецификаций — и сегодня на саму модель приходится 2 % кодовой базы, а на договор о том, как система обязана себя вести, — остальные 98 %.</p>
+    <dl class="figures">
+      <div><dt>132 725</dt><dd>строк Rust, 68 файлов</dd></div>
+      <div><dt>1 170</dt><dd>тестовых функций</dd></div>
+      <div><dt>5</dt><dd>спецификаций</dd></div>
+      <div><dt>3</dt><dd>таймскейла: τ ≈ 4/32/128</dd></div>
+      <div><dt>2 %</dt><dd>доля SSM-ядра</dd></div>
+      <div><dt>104</dt><dd>коммита</dd></div>
+    </dl>
+  </header>
+
+  <!-- ── Ядро ──────────────────────────────────────────── -->
+  <section id="core">
+    <h2>Ядро: одна формула, три скорости</h2>
+    <p>Обычный Transformer, чтобы понять текущий токен, сравнивает его со всеми предыдущими: удвоив длину текста, вы учетверяете работу — это <code>O(L²)</code>. Harmonic держит вместо этого маленькое состояние и обновляет его на каждом шаге одной и той же аффинной формулой:</p>
+    <p class="formula">h[t] = A(t) · h[t−1] + b(t)</p>
+    <p><code>A</code> отвечает на вопрос «насколько забыть старое» (чем ближе к единице, тем дольше память), <code>b</code> — «что добавить нового». Таких счётчиков три, и они настроены на разные постоянные забывания:</p>
+    <dl class="tau">
+      <div><dt>τ ≈ 4 — быстрый</dt><dd>последние несколько символов; оперативная память в моменте</dd></div>
+      <div><dt>τ ≈ 32 — средний</dt><dd>примерно последнее слово или два</dd></div>
+      <div><dt>τ ≈ 128 — медленный</dt><dd>текущее предложение или абзац</dd></div>
+    </dl>
+    <p>Уровни не независимы: медленный пытается <b>предсказать</b> то, что видит быстрый, и наверх уходит только ошибка этого предсказания. Три читателя одного текста с разной скоростью докладывают наверх не пересказ, а лишь то, что разошлось с их собственным ожиданием. Сам пересчёт делается не шаг за шагом, а сразу для целого окна — через параллельный скан Hillis–Steele: слагаемые складываются попарно, потом пары пар, логарифмически меньше проходов на тот же результат.</p>
+
+    <figure>
+      <pre class="console" id="core-src">∿ HARMONIC-RS · ГОРЯЧИЙ ПУТЬ — единственный код, который считает при запуске
+
+    байты корпуса (игрушечный byte-level LM)
+         | get_batch() — случайные окна, Tensor&lt;u32&gt; [B,T]
+         v
+ +-------------------------+
+ | bin/train.rs        67  |  Application: цикл шагов, h0 обнуляется на батч
+ +-----------+-------------+
+             | MinHarmonicFair::forward()
+             v
+ +-------------------------+
+ | model.rs           280  |  Domain: три уровня + predictive-error routing
+ +-----------+-------------+     наверх течёт ошибка предсказания, не состояние
+             | HarmonicLevel::forward()
+             v
+ +-------------------------+
+ | level.rs           352  |  Domain: гейт A(t)/b(t), bias-трюк под целевой τ
+ +----+---------------+----+
+      |               |          scan НЕ знает про nn — это соседи,
+      v               v          а не звенья одной цепочки
+ +-----------+   +-----------+
+ | scan.rs   |   | nn.rs     |
+ | Hillis-   |   | Linear,   |
+ | Steele    |   | LayerNorm |
+ |      231  |   |      161  |
+ +-----------+   +-----------+
+
+             логиты [B,T,vocab]
+                  | cross_entropy(logits, targets)
+                  v
+                loss --&gt; AdamW.backward_step() --&gt; веса обновлены
+                                                  чекпоинтов нет: живут
+                                                  только пока идёт запуск
+
+ ВНЕ горячего пути, изолированы намеренно:
+   custom_scan.rs  435  CustomOp3 fwd+bwd — фаза 1 GPU-роадмапа
+   spectral.rs     662  spectral SSM M1.1 + M2C, 0 тестов
+   task_graph.rs  1988  event-sourced Task/Attempt/Lease, 0 тестов
+
+ Инвариант: перенос raw-состояния между чанками == один сплошной проход;
+ перенос НОРМАЛИЗОВАННОГО состояния измеримо портит результат.</pre>
+      <div class="capline">
+        <figcaption><b>Горячий путь — пять модулей и около 1 100 строк</b> (вся SSM-область вместе с изолированными экспериментами — 2 989). <code>scan.rs</code> и <code>nn.rs</code> — независимые соседи: оба импортируются из <code>level.rs</code>, но друг о друге не знают. Чекпоинтов нет вообще: веса живут только пока идёт запуск.</figcaption>
+        <button class="copy" id="copy-core" type="button">Копировать схему</button>
+      </div>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <caption>Модули горячего пути и изолированные эксперименты</caption>
+        <thead><tr><th>Модуль</th><th class="n">Строк</th><th class="n">Тестов</th><th>Ответственность</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">scan.rs</td><td class="n">231</td><td class="n yes">3</td><td>примитив параллельного скана (Hillis–Steele)</td></tr>
+          <tr><td class="mono">nn.rs</td><td class="n">161</td><td class="n yes">3</td><td>Linear / LayerNorm поверх <code>Var</code> — вручную, ради bias-трюка</td></tr>
+          <tr><td class="mono">level.rs</td><td class="n">352</td><td class="n yes">8</td><td>гейт A(t)/b(t), bias-трюк под τ, <code>forward</code> / <code>forward_stateful</code></td></tr>
+          <tr><td class="mono">model.rs</td><td class="n">280</td><td class="n yes">4</td><td>иерархия трёх уровней, predictive-error routing</td></tr>
+          <tr><td class="mono">bin/train.rs</td><td class="n">67</td><td class="n dim">smoke</td><td>цикл обучения byte-level LM на игрушечном корпусе</td></tr>
+          <tr><td class="mono">bin/train_stateful.rs</td><td class="n">328</td><td class="n yes">4</td><td>sequential batching: no-carry против infer-only-carry</td></tr>
+          <tr><td class="mono">custom_scan.rs</td><td class="n">435</td><td class="n yes">4</td><td><code>CustomOp3</code> fwd+bwd — фаза 1 GPU-роадмапа, к <code>level.rs</code> не подключён</td></tr>
+          <tr><td class="mono">spectral.rs</td><td class="n">662</td><td class="n no">0</td><td>spectral SSM: real-diagonal M1.1 + complex-diagonal M2C с защитой от фазового aliasing</td></tr>
+          <tr><td class="mono">task_graph.rs</td><td class="n">1 988</td><td class="n no">0</td><td>event-sourced Task/Attempt/Lease (TEG-1..3) — отдельный контекст</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="callout"><b>Три нижние строки — не забытый код, а намеренная изоляция.</b> Они не входят в горячий путь, чтобы эксперименты рядом не могли сломать работающую модель. Нули в колонке тестов показаны как есть: код компилируется, но тестами не закрыт.</p>
+  </section>
+
+  <!-- ── Объём ─────────────────────────────────────────── -->
+  <section id="volume">
+    <h2>Инверсия: 2 % модели, 98 % договора</h2>
+    <p>Репозиторий начинался как порт одной архитектурной идеи. Замеры по отслеживаемым git-файлам на коммите <code>8cf462e</code> показывают, что от этого замысла осталась самая маленькая часть дерева, а основной объём — контрактный слой пяти спецификаций: типы, канонизация байт, инварианты и тесты, описывающие систему, которой ещё нет.</p>
+    <div class="tablewrap">
+      <table class="spec">
+        <caption>Контейнеры: объём, доля тестового кода, закрытые задачи</caption>
+        <thead><tr><th>Контейнер</th><th>Состояние</th><th class="n">Строк</th><th class="n">Тесты</th><th class="n">Задачи</th><th>Роль</th></tr></thead>
+        <tbody>
+          <tr><td>harmonic-edge-transformer</td><td class="part">контракты HET-0</td><td class="n">61 381</td><td class="n">36 %</td><td class="n">5/27</td><td>типизированный разреженный граф + спектральная память; советующий риск-скоринг</td></tr>
+          <tr><td>graph-code-reasoner</td><td class="part">контракты GCR-0</td><td class="n">33 381</td><td class="n">59 %</td><td class="n">1/48</td><td>анализ влияния изменений, ограниченные AST-планы</td></tr>
+          <tr><td>spec-driven-developer</td><td class="part">контракты SDD-0..2</td><td class="n">26 344</td><td class="n">31 %</td><td class="n">17/26</td><td>оркестратор жизненного цикла поверх остальных контекстов</td></tr>
+          <tr><td>artifact-evidence-registry</td><td class="part">SQLite-бэкенд, в работе</td><td class="n">4 831 <span class="dim">+23 800</span></td><td class="n">28 %</td><td class="n">2/7</td><td>create-only durable хранилище артефактов и свидетельств</td></tr>
+          <tr><td>task_graph.rs (TEG-1..3)</td><td class="dim">клиентская модель</td><td class="n">3 799</td><td class="n">13 %</td><td class="n dim">—</td><td>локальная contract-модель Task/Attempt/Lease внутри крейта</td></tr>
+          <tr><td>ядро SSM</td><td class="yes">работает</td><td class="n">2 989</td><td class="n">26 %</td><td class="n dim">—</td><td>scan, level, model, nn — единственный код, который реально обучает модель</td></tr>
+          <tr><td>durable-taskgraph-authority</td><td class="no">только спецификация</td><td class="n">0</td><td class="n dim">—</td><td class="n">0/8</td><td>внешний authority жизненного цикла: event store, аренды, fencing</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>Как читать колонки.</b> «Строк» — по рабочему дереву, <code>Vendor/</code> исключён как чужой референс-клон; у реестра вторым числом показана незакоммиченная работа. «Тесты» — доля строк после первого <code>#[cfg(test)]</code> в файле. «Задачи» — закрытые верхнеуровневые пункты <code>tasks.md</code> соответствующей спецификации.</p>
+    <p class="callout"><b>Числа — про объём, не про допуск.</b> Каждая спецификация отдельным пунктом фиксирует, что durable-инфраструктуры, реальных парсеров, компиляторных адаптеров и внешних авторитетов в дереве нет, и прямо запрещает трактовать наличие контрактов как готовую систему.</p>
+  </section>
+
+  <!-- ── Карта ─────────────────────────────────────────── -->
+  <section id="map">
+    <h2>Карта: кто здесь главный</h2>
+    <p>Первый вопрос к системе из пяти частей — не «как течёт поток данных», а «кто выносит решения». Ответ неочевиден: оркестратор стоит в центре схемы, но авторитетом не является. Приёмку выдаёт Acceptance Authority, канонический код держит Accepted Source Snapshot, личность подтверждает Identity Issuer — все три вне всех спецификаций.</p>
+    <figure>
+      <pre class="console" id="map-src">                    ВНЕШНИЕ АВТОРИТЕТЫ (вне всех спецификаций)
+     +---------------------+---------------------+----------------------+
+     | Acceptance          | Accepted Source     | Identity             |
+     | Authority           | Snapshot Store      | Issuer               |
+     +----------+----------+----------+----------+-----------+----------+
+                ^                     | только чтение        | proof
+    предложение |                     v                      v
+     +----------+---------------------------------------------------------+
+     |  spec-driven-developer  (SDD-A01 .. SDD-A13)                       |
+     |  оркестратор жизненного цикла; сам НЕ является authority           |
+     +---+--------------------+---------------------+---------------------+
+         | durable bytes      | команды / receipts  | advisory (не власть)
+         v                    v                     v
+ +----------------+  +--------------------+  +--------------+  +--------------+
+ | artifact-      |  | durable-taskgraph- |  | graph-code-  |  | harmonic-    |
+ | evidence-      |  | authority          |  | reasoner     |  | edge-        |
+ | registry       |  | (владелец DAG,     |  | (влияние +   |  | transformer  |
+ | (create-only)  |  |  Lease, Attempt)   |  |  план AST)   |  | (риск задач) |
+ +-------+--------+  +---------+----------+  +------+-------+  +------+-------+
+         ^                     |                    |                 |
+         |  экспорт фактов     |                    | свидетельства   | рекоменд.
+         +---------------------+                    |                 |
+         |                                          |                 |
+         +------------------------------------------+-----------------+
+                    всё возвращается в реестр как evidence,
+                    хранение факта НЕ передаёт полномочия его издателя</pre>
+      <div class="capline">
+        <figcaption><b>Стрелки вниз — полномочия, стрелки вверх — свидетельства.</b> Всё, что производят четыре нижних контекста, возвращается в реестр как evidence, и хранение факта не передаёт полномочия его издателя.</figcaption>
+        <button class="copy" id="copy-map" type="button">Копировать схему</button>
+      </div>
+    </figure>
+    <p>Диаграммы ниже читаются в любом ANSI-терминале: топология и стрелки — 7-битный ASCII, подписи — Юникод. Схема выживает в <code>git log</code>, в ssh-сессии, в diff-е и в письме — без Mermaid, SVG и браузера. Это сводка; нормативные контракты, инварианты и трассируемость живут в <code>design.md</code> соответствующей спецификации.</p>
+  </section>
+
+  <!-- ── Спецификации ──────────────────────────────────── -->
+  <section id="specs">
+    <h2>Пять спецификаций — C4 L2</h2>
+    <div class="figset">
+
+      <figure>
+        <h3>spec-driven-developer</h3>
+        <p>Путь от недоверенного намерения до принятого снимка: тринадцать компонентов <code>A01</code>–<code>A13</code> и ровно одна граница мутации на весь контекст.</p>
+        <pre class="console" id="sdd-src"> НЕДОВЕРЕННЫЙ ВВОД: пользователь, репозиторий, контент провайдера
+        |
+        v
+ +--------------------+
+ | A13 Шлюз репо и    |&lt;--- принятый источник: только чтение, точные
+ | принятых снимков   |     неизменяемые ref и байты, без mutable alias
+ +----------+---------+
+            v
+ +--------------------+
+ | A01 Намерение и    |
+ | приоритет источник.|
+ +----------+---------+
+            v
+ +--------------------+
+ | A03 Компилятор     |
+ | требований,        |
+ | архитектуры, design|
+ +----------+---------+
+            v
+ +--------------------+   команды    +-----------------------------+
+ | A04 Планировщик    |-------------&gt;| ВНЕШНИЙ TaskGraph           |
+ | Task DAG и порт    |&lt;-------------| durable-taskgraph-authority |
+ +----------+---------+   receipts   | владеет eligibility, Lease, |
+            |                        | Attempt, retry, отменой     |
+            |                        +-----------------------------+
+            v
+ +--------------------+
+ | A05 Изолированный  |  &lt;-- ЕДИНСТВЕННАЯ граница мутации во всём SDD
+ | исполнитель кандид.|
+ +----------+---------+
+            v
+ +--------------------+
+ | A06 Детерминирован.|
+ | верификация        |
+ +----------+---------+
+            v
+ +--------------------+    отказ     +-----------------------------+
+ | A07 Семантическое  |-------------&gt;| A08 Ограниченный ремонт     |
+ | ревью и ручной     |              | (конечные бюджеты)          |
+ | fallback           |              +--------------+--------------+
+ +----------+---------+                             |
+            | pass          неизменяемый RepairRequest
+            |                                       v
+            |                          новая ревизия стадии --&gt; A02
+            v
+ +--------------------+              +-----------------------------+
+ | A09 Заявка на      |-------------&gt;| ВНЕШНЯЯ Acceptance          |
+ | approval и         |&lt;-------------| Authority — единственный    |
+ | публикация         |   решение    | издатель accepted snapshot  |
+ +----------+---------+              +-----------------------------+
+            v точный receipt
+ +-----------------------------------------------------------------------+
+ | СКВОЗНАЯ ПЛОСКОСТЬ — фиксирует факты, но не создаёт полномочий        |
+ | A02 Реестр артефактов и свидетельств (durable, create-only, lineage)  |
+ | A10 Replay, отмена, восстановление                                    |
+ | A11 Политика, безопасность, бюджеты, admission gate (fail-closed)     |
+ | A12 Оценка, проекция статуса, наблюдаемость                           |
+ +-----------------------------------------------------------------------+
+
+ Инвариант: Specified != Implemented != Verified != Reviewed != Approved != Accepted.
+ Успех фазы не подразумевает следующую; dispatch в TaskGraph не равен успеху задачи.</pre>
+        <div class="capline">
+          <figcaption><b>Мутировать что-либо разрешено только в <code>A05</code></b> — изолированном исполнителе кандидата. Всё выше по потоку читает и компилирует, всё ниже — проверяет. Отказ на ревью не правит стадию на месте, а порождает неизменяемый <code>RepairRequest</code> и новую ревизию, поэтому история никогда не перезаписывается.</figcaption>
+          <button class="copy" id="copy-sdd" type="button">Копировать схему</button>
+        </div>
+      </figure>
+
+      <figure>
+        <h3>artifact-evidence-registry</h3>
+        <p>Create-only durable хранилище: девять компонентов <code>R-A01</code>…<code>R-A09</code> над одной SQLite-транзакцией на команду.</p>
+        <pre class="console" id="reg-src"> ПРОИЗВОДИТЕЛИ                                                ПОТРЕБИТЕЛИ
+ SDD | экспортёр TaskGraph | авторитеты approval/acceptance     читатели / аудит
+        |                                                             ^
+        v                                                             |
+ +-------------------------- Registry API (закрытая) -------------------------+
+ | create | get_exact | list | resolve_lineage | tombstone | capability_status|
+ +------------------------------------+---------------------------------------+
+                                      v
+ +----------------+   +----------------+   +----------------+
+ | R-A01          |--&gt;| R-A02          |--&gt;| R-A03          |
+ | контракты и    |   | identity и     |   | валидатор      |
+ | канонизация    |   | политика       |   | lineage        |
+ | (NFC, digest)  |   | (proof, RBAC)  |   | (ацикличность) |
+ +----------------+   +----------------+   +-------+--------+
+                                                   v
+                              +---------------------------------------+
+                              | R-A04 Транзакционный репозиторий      |
+                              | CAS, идемпотентность, страницы        |
+                              +------------------+--------------------+
+                                                 v
+                    +----------------------------------------------------+
+                    | R-A05 SQLite WAL — одна ACID-транзакция на команду |
+                    | envelopes | blobs | lineage | idempotency | audit  |
+                    +----+-----------------+------------------+----------+
+                         v                 v                  v
+        +------------------+ +------------------+ +----------------------+
+        | R-A06 Проверка   | | R-A07 Retention, | | R-A08 Аудит, метрики,|
+        | чтения, integrity| | tombstone,       | | recovery evidence    |
+        | scan, карантин   | | append-only      | |                      |
+        +------------------+ | миграции         | +----------------------+
+                             +------------------+
+        +--------------------------------------------------------------+
+        | R-A09 Conformance harness: рестарт, сбои, конкурентность,    |
+        | restore, SLO — допуск только по реальному бэкенду            |
+        +--------------------------------------------------------------+
+
+ Инварианты: create-only (ревизия никогда не мутирует), payload-bound
+ идемпотентность переживает рестарт, подозрительные байты не отдаются
+ как verified. Registry authority-neutral: хранение факта не делает его истиной.</pre>
+        <div class="capline">
+          <figcaption><b>Ревизия артефакта не мутирует никогда</b> — существует только создание новой. Идемпотентность привязана к payload и переживает рестарт процесса; байты, не прошедшие integrity-проверку, уходят в карантин, а не отдаются читателю как verified.</figcaption>
+          <button class="copy" id="copy-reg" type="button">Копировать схему</button>
+        </div>
+      </figure>
+
+      <figure>
+        <h3>durable-taskgraph-authority</h3>
+        <p>Внешний владелец жизненного цикла задач: event store, аренды, fencing-токены. Единственная из пяти спецификаций, у которой пока нет ни строки Rust.</p>
+        <pre class="console" id="dta-src"> SDD-A04 (недоверенный клиент)                 Workers (исполнители)
+            |                                         |
+            +--------------------+--------------------+
+                                 v
+                  +----------------------------------+
+                  | T-A01 Транспорт и аутентификация |
+                  | версионированные POST /v1/...    |
+                  +----------------+-----------------+
+                                   v
+                  +----------------------------------+
+                  | T-A02 Граница команд             |
+                  | закрытый union, canonical bytes  |
+                  +----------------+-----------------+
+                                   v
+     +------------------+   +----------------------------------+
+     | T-A05 Часы аренды|&lt;--| T-A03 Ядро жизненного цикла      |
+     | и fencing-токены |--&gt;| чистая функция от проекции,      |
+     | (монотонность)   |   | команды и Authority_Time         |
+     +------------------+   +----------------+-----------------+
+                                             v
+     +--------------------------------------------------------------------+
+     | T-A04 Event Store (SQLite, единолично принадлежит authority)       |
+     | CAS версии потока | append Lifecycle_Fact | идемпотентность команд |
+     | leases | attempts | снимки | строки проекции | outbox              |
+     +--------+----------------------+---------------------------+--------+
+              v                      v                           v
+     +-----------------+   +--------------------+   +----------------------+
+     | T-A06 Проекция  |   | T-A07 Издатель     |   | T-A08 Экспортёр в    |
+     | и replay        |   | proof: Ed25519,    |   | Registry — строго    |
+     | (fold фактов)   |   | ротация ключей     |   | ПОСЛЕ commit         |
+     +--------+--------+   +--------------------+   +----------+-----------+
+              v                                                v
+     SDD (T-A09 клиентский адаптер), Workers      artifact-evidence-registry
+                                                        (evidence only)
+
+     T-A10 Conformance harness: отдельный процесс, управляемые часы,
+     failpoints, рестарты, DR, authority-negative тесты.
+
+ Инварианты: Command_Receipt != успех задачи; локальная проекция SDD
+ не авторитетна; устаревший fencing-токен не может изменить Attempt;
+ сбой экспорта в Registry не откатывает commit жизненного цикла.</pre>
+        <div class="capline">
+          <figcaption><b><code>Command_Receipt</code> — подтверждение приёма команды, а не успех задачи.</b> Локальная проекция на стороне SDD не авторитетна, устаревший fencing-токен не может изменить <code>Attempt</code>, а сбой экспорта в реестр не откатывает уже зафиксированный переход.</figcaption>
+          <button class="copy" id="copy-dta" type="button">Копировать схему</button>
+        </div>
+      </figure>
+
+      <figure>
+        <h3>graph-code-reasoner</h3>
+        <p>Анализ влияния и ограниченное планирование AST-изменений: принятый снимок доступен только на чтение, кандидатское пространство изолировано.</p>
+        <pre class="console" id="gcr-src"> ПРИНЯТЫЙ ИСТОЧНИК (только чтение)      ПРОСТРАНСТВО КАНДИДАТА (запись ограничена)
+ +-----------------------------+        +----------------------------------+
+ | принятый снимок + CEG       |        | изолированная точная база        |
+ +--------------+--------------+        +----------------+-----------------+
+                | A02 шлюз чтения                        ^ A07 поставщик
+                v                                        | рабочего пространства
+ типизированное намерение
+ (или недоверенное предложение LLM)
+        |
+        v
+   +--------+   +--------+   +--------+   +--------+   +--------+   +--------+
+   | A01    |--&gt;| A03    |--&gt;| A04    |--&gt;| A05    |--&gt;| A06    |--&gt;| A08    |
+   |граница |   |seed +  |   |вывод,  |   |неизмен.|   |построй.|   |транзак.|
+   |намерен.|   |поиск с |   |огранич.|   |свидет. |   |и валид.|   |исполн. |
+   |и LLM   |   |бюджетом|   |свидет. |   |влияния |   |плана   |   |AST-опер|
+   +--------+   +--------+   +--------+   +--------+   +--------+   +---+----+
+                                                                        v
+                             +--------+   +--------+   +--------+   +--------+
+                             |внешняя |&lt;--| A11    |&lt;--| A10    |&lt;--| A09    |
+                             |ручная  |   |ремонт, |   |адаптер |   |реиндекс|
+                             |проверка|   |fallback|   |верифик.|   |кандид.,|
+                             |/приёмка|   |эскалац.|   |диагност|   |дельта  |
+                             +--------+   +---+----+   +--------+   +--------+
+                                              |
+                                              +--&gt; неизменяемый RepairRequest
+                                                   --&gt; новый вызов A06 (никогда
+                                                   не обратный вызов на месте)
+
+ +---------------------------------------------------------------------------+
+ | A12 плоскость контрактов, оценки, аудита и допуска                        |
+ | вниз: закреплённые схемы/конфигурации -&gt; A01, A03, A04, A06, A10          |
+ | вверх: свидетельства &lt;- A05, A09, A10, A11                                |
+ +---------------------------------------------------------------------------+
+
+ Инварианты: A05 неизменяем (планирование не может дозапрашивать скрытый
+ поиск); A07 изолирован (кандидатский код не течёт в принятое пространство);
+ LLM только нормализует намерение и объясняет уже полученные свидетельства.</pre>
+        <div class="capline">
+          <figcaption><b>Свидетельства влияния (<code>A05</code>) неизменяемы</b> — планировщик не может задним числом дозапросить скрытый поиск. LLM понижена до двух ролей: нормализовать намерение на входе и объяснить уже собранные свидетельства на выходе; решений она не принимает.</figcaption>
+          <button class="copy" id="copy-gcr" type="button">Копировать схему</button>
+        </div>
+      </figure>
+
+      <figure>
+        <h3>harmonic-edge-transformer</h3>
+        <p>Типизированный разреженный граф плюс спектральная память сущностей — оценка риска задач. Слой советующий, не решающий; здесь же замыкается связь с самим SSM-ядром.</p>
+        <pre class="console" id="het-src"> +---------------- ПЛОСКОСТЬ АВТОРИТЕТОВ (для HET — только чтение) ----------+
+ | TaskGraph | принятый код | проекция CEG | Bridge | верификатор | политика |
+ +-----------------------------------+---------------------------------------+
+                                     | неизменяемые версионированные факты
+                                     v
+ +---------------- ПЛОСКОСТЬ НАБЛЮДЕНИЙ -------------------------------------+
+ | A1 адаптеры источников --&gt; A2 материализатор + долговечное хранилище      |
+ | результат: закрытые каузальные префиксы, дедуплицированные по CommandId   |
+ +-----------------------------------+---------------------------------------+
+                                     v
+ +---------------- ПЛОСКОСТЬ ВЫВОДА -----------------------------------------+
+ | A3 тензоризатор --&gt; A4 кодер типизированного разреженного графа           |
+ |                 --&gt; A5 спектральная память Entity (каузальная рекуррент.) |
+ |                 --&gt; A6 считывание риска --&gt; A7 защита + резервный путь    |
+ +-----------------------------------+---------------------------------------+
+                                     | ранжирование УЖЕ ДОПУСТИМЫХ Ready-задач
+                                     v
+                      +--------------------------------+
+                      | MinHarmonicFair — существующий |
+                      | планировщик (владелец решения) |
+                      +---------------+----------------+
+                                      v
+                            валидация TaskGraph
+                                      v
+                                 LeaseAcquired
+
+ +---------------- ПЛОСКОСТЬ УПРАВЛЕНИЯ / ОФЛАЙН ----------------------------+
+ | A8 набор данных + оценка | A9 реестр моделей + допуск | A10 аудит + SLO   |
+ | закрытые исторические префиксы --&gt; метрики --&gt; свидетельство для допуска  |
+ +---------------------------------------------------------------------------+
+
+ Инварианты: прогноз строго ДО LeaseAcquired; HET не создаёт Lease,
+ не меняет DAG и не решает, какая ревизия кода канонична; нейронная память
+ обновляется только после долговечной дедупликации и каузального замыкания.</pre>
+        <div class="capline">
+          <figcaption><b>Прогноз выдаётся строго до <code>LeaseAcquired</code></b> и ранжирует только задачи, которые планировщик уже признал допустимыми. HET не создаёт аренд, не меняет DAG и не решает, какая ревизия кода канонична; нейронная память обновляется лишь после долговечной дедупликации и каузального замыкания префикса.</figcaption>
+          <button class="copy" id="copy-het" type="button">Копировать схему</button>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ── Полномочия ────────────────────────────────────── -->
+  <section id="authority">
+    <h2>Сквозной инвариант: граница полномочий</h2>
+    <p>Пять спецификаций писались независимо друг от друга и сошлись на одном и том же правиле — это признак системного свойства, а не совпадения внутри одного документа. Правило простое: тот, кто посчитал, и тот, кто решает, — разные роли.</p>
+    <div class="tablewrap">
+      <table>
+        <caption>Одно правило — четыре независимых закрепления</caption>
+        <thead><tr><th>Правило</th><th>Где закреплено</th></tr></thead>
+        <tbody>
+          <tr><td>TaskGraph — единственный источник истины о переходах выполнения: Lease, Attempt, retry, TTL</td><td class="mono">SDD REQ-8.3 · HET REQ-11.2 · GCR REQ-2.9</td></tr>
+          <tr><td>Accepted snapshot — единственный источник истины о каноническом коде; кандидатные правки живут отдельно</td><td class="mono">GCR REQ-2.1/2.10 · SDD REQ-9.1 · HET REQ-2.5</td></tr>
+          <tr><td>Компилятор, тесты, LLM и ревью создают только evidence и никогда не решают acceptance</td><td class="mono">GCR REQ-2.7–2.8 · SDD REQ-2.5–2.6 · HET REQ-11.4</td></tr>
+          <tr><td>У каждого контекста обязан быть детерминированный резервный режим без LLM и обучаемой модели</td><td class="mono">GCR REQ-20.1 · HET REQ-14.1 · SDD REQ-16.5</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="callout"><b>Суд и эксперт.</b> Эксперт — компилятор, тесты, LLM, обученная модель риска — изучает улики и даёт мнение. Приговор выносит судья по заранее записанным правилам: TaskGraph, accepted snapshot, отдельная политика приёмки. Мнение эксперта — материал дела, а не решение по нему; и если эксперт замолчал или ошибся, у судьи обязан остаться путь решить без него.</p>
+  </section>
+
+  <!-- ── Долги ─────────────────────────────────────────── -->
+  <section id="debts">
+    <h2>Где узкое место и что не сделано</h2>
+    <div class="split">
+      <div class="stack">
+        <h3>Пройдено</h3>
+        <ul class="plain">
+          <li>Параллельный скан численно совпадает с последовательным эталоном, включая <code>T = 17</code> — не степень двойки.</li>
+          <li>Bias-трюк попадает в целевой τ при нулевых весах, на обоих clamp-краях.</li>
+          <li>Chunk-boundary контракт <code>forward_stateful</code>: два чанка с raw-переносом дают ту же последовательность, что один проход.</li>
+          <li>Перенос <em>нормализованного</em> состояния вместо raw измеримо портит результат — инвариант доказан, а не задекларирован.</li>
+          <li>Фаза «контракты плюс синтетика» закрыта во всех трёх крупных спецификациях — это и есть основной объём кода.</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <h3>Не сделано</h3>
+        <ul class="plain">
+          <li><code>durable-taskgraph-authority</code> — ноль строк. От него зависят и <code>HET-1</code> (закрытые каузальные префиксы), и переход SDD от локальной проекции к настоящему внешнему авторитету.</li>
+          <li>GPU-скан: фаза 1 (<code>CustomOp3</code> на CPU) готова, Metal и CUDA — нет.</li>
+          <li>Чекпоинты весов не существуют вообще: ни save, ни load.</li>
+          <li><code>spectral.rs</code> и <code>task_graph.rs</code> — 2 650 строк без единого теста.</li>
+          <li>Наблюдаемость ядра — <code>println!</code> каждые N шагов; ни структурированных логов, ни метрик.</li>
+          <li>Stateful-обучение спроектировано, но <code>train.rs</code> обнуляет <code>h0</code> на каждом батче, так что <code>O(1)</code>-память на инференсе остаётся свойством дизайна, а не работающего цикла.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="callout"><b>Честная формулировка состояния.</b> Это исследовательский порт и контрактный фундамент, а не production-библиотека. Написан очень подробный договор о том, как система обязана себя вести; исполнителя у большей части этого договора пока нет.</p>
+  </section>
+
+  <footer>
+    <p>Harmonic · метрики и схемы сверены с деревом на коммите <code>8cf462e</code>, 8 августа 2026. Объём посчитан статически по отслеживаемым git-файлам, <code>Vendor/</code> исключён.</p>
+    <p>Источники: <code>README.md</code>, <code>Wiki/HLD.md</code>, <code>Wiki/SYSTEM_HLD.md</code>, <code>Wiki/ARCHITECTURE.md</code> и <code>.kiro/specs/*/design.md</code>. Оригинальная архитектурная идея — <a href="https://github.com/Omibranch/Harmonic">Omibranch/Harmonic</a>; этот порт с Harmonic Labs не аффилирован.</p>
+    <p>Свой код — MIT OR Apache-2.0, как у <a href="https://github.com/huggingface/candle">candle</a>. Оригинальный Harmonic в этом репозитории не публикуется и лицензирован отдельно.</p>
+    <p><a href="/">← все архитектурные атласы</a></p>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var pairs = [
+      ['copy-core', 'core-src'], ['copy-map', 'map-src'], ['copy-sdd', 'sdd-src'],
+      ['copy-reg', 'reg-src'], ['copy-dta', 'dta-src'], ['copy-gcr', 'gcr-src'],
+      ['copy-het', 'het-src']
+    ];
+    pairs.forEach(function (p) {
+      var btn = document.getElementById(p[0]);
+      var src = document.getElementById(p[1]);
+      if (!btn || !src) return;
+      btn.addEventListener('click', function () {
+        var text = src.innerText;
+        var reset = function (label) {
+          btn.textContent = label;
+          setTimeout(function () { btn.textContent = 'Копировать схему'; }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { reset('Скопировано'); },
+                                                   function () { reset('Выдели вручную'); });
+        } else {
+          reset('Выдели вручную');
+        }
+      });
+    });
+  })();
+</script>
+</body>
+</html>
